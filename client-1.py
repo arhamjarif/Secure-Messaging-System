@@ -6,4 +6,6 @@ port = 6000
 with socket.socket(socket.AF_INET,socket.SOCK_STREAM) as client:
     client.connect((host,port))
     print('Connected to server.\n')
-    client.send(input('Messege:\n').encode())
+    while True:
+        client.send(input('Enter Message:\n').encode())
+        print(f'Recieved:\n{client.recv(1024).decode()}')

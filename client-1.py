@@ -11,9 +11,17 @@ def recv_check(client: socket.socket):
 with socket.socket(socket.AF_INET,socket.SOCK_STREAM) as client:
     client.connect((host,port))
     print('Connected to server.\n')
-    username = input('Enter username: ')
-    login_packet = {'type':'login','username':username}
-    client.send(json.dumps(login_packet).encode())
+
+    while True:
+        username = input('Enter username: ')
+        login_packet = {'type':'login','username':username}
+        client.send(json.dumps(login_packet).encode())
+        login_validation = json.loads(client.recv(1024).decode())
+        if login_validation['type'] == 'login_success':
+            break
+        else:
+            print('Username taken. Please try again')
+    
     receive_thread = threading.Thread(target=recv_check,args=(client,))
     receive_thread.start()
 

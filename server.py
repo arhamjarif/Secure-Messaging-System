@@ -36,7 +36,7 @@ def send_all(conn:socket.socket,packet:dict):
 def cleanup(conn:socket.socket,connections_to_usernames:dict,usernames_to_connections:dict):
     if conn not in connections_to_usernames:
         return
-    username = connections_to_usernames[conn]
+    username = connections_to_usernames[conn][0]
     del usernames_to_connections[username]
     del connections_to_usernames[conn]
     print(f'{username} disconnected')
@@ -63,16 +63,20 @@ def handle_client(conn: socket.socket, connections_to_usernames:dict, usernames_
                         send_all(conn,login_fail)
                     else:
                         login_success = {'type':'login_success'}
-                        connections_to_usernames[conn] = incoming_packet['username']
-                        usernames_to_connections[incoming_packet['username']] = conn
+                        connections_to_usernames[conn] = (incoming_packet['username'], incoming_packet['public_key'])
+                        usernames_to_connections[incoming_packet['username']] = (conn, incoming_packet['public_key'])
                         send_all(conn,login_success)
 
                 elif incoming_packet['type'] == 'userlist_request':
                     userlist = {'type':'userlist', 'users': list(usernames_to_connections.keys())}
                     send_all(conn,userlist)
 
+                elif incoming_packet['type'] == 'public_key_request':
+                    requested_public_key = {'type':'public_key_response', 'public_key':usernames_to_connections[incoming_packet['user']][1]}
+                    send_all(conn, requested_public_key)
+
                 elif incoming_packet['type'] == 'public':
-                    outgoing_packet = {'type': 'public', 'sender':connections_to_usernames[conn],'message':incoming_packet['message']}
+                    outgoing_packet = {'type': 'public', 'sender':connections_to_usernames[conn][0],'message':incoming_packet['message']}
                     
                     for connection in connections_to_usernames:
                         if conn != connection:
@@ -80,8 +84,8 @@ def handle_client(conn: socket.socket, connections_to_usernames:dict, usernames_
 
                 elif incoming_packet['type'] == 'private':
                     if incoming_packet['recipient'] in usernames_to_connections:
-                        outgoing_packet = {'type':'private', 'sender':connections_to_usernames[conn], 'message':incoming_packet['message']}
-                        send_all(usernames_to_connections[incoming_packet['recipient']],outgoing_packet)
+                        outgoing_packet = {'type':'private', 'sender':connections_to_usernames[conn][0], 'message':incoming_packet['message']}
+                        send_all(usernames_to_connections[incoming_packet['recipient']][0],outgoing_packet)
                     else:
                         system_packet = {'type': 'public', 'sender': 'SYSTEM', 'message': f'{incoming_packet['recipient']} does not exist'}
                         send_all(conn,system_packet)

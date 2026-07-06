@@ -1,24 +1,54 @@
 import socket,threading,json
 
+
 host = "127.0.0.1"
 port = 6000
-def cleanup(conn:socket,connections_to_usernames:dict,usernames_to_connections:dict):
+def recv_exact(conn:socket.socket, required_bytes:int):
+    received_bytes = conn.recv(required_bytes)
+    if received_bytes == b'':
+        return b''
+    received_bytes_counter = len(received_bytes)
+    while received_bytes_counter != required_bytes:
+        chunk = conn.recv(required_bytes-received_bytes_counter)
+        if chunk == b'':
+            return b''
+        received_bytes += chunk 
+        received_bytes_counter = len(received_bytes)
+    return received_bytes
+
+
+def recv_all(conn:socket.socket):
+    header = recv_exact(conn,4)
+    if header == b'':
+        return header
+    length = int(header.decode())
+    received_bytes = recv_exact(conn,length)
+    return received_bytes
+
+
+
+def send_all(conn:socket.socket,packet:dict):
+    outgoing_transmission = json.dumps(packet).encode()
+    length = str(len(outgoing_transmission)).rjust(4,'0').encode()
+    conn.sendall(length + outgoing_transmission)
+
+
+def cleanup(conn:socket.socket,connections_to_usernames:dict,usernames_to_connections:dict):
     if conn not in connections_to_usernames:
         return
     username = connections_to_usernames[conn]
     del usernames_to_connections[username]
     del connections_to_usernames[conn]
     print(f'{username} disconnected')
-    system_message = {'type': 'public','sender':'SYSTEM','message': f'{username} has disconnected'}
-    system_packet = json.dumps(system_message).encode()
+    system_packet = {'type': 'public','sender':'SYSTEM','message': f'{username} has disconnected'}
     for connection in connections_to_usernames:
-        connection.send(system_packet)
+        send_all(connection,system_packet)
 
 def handle_client(conn: socket.socket, connections_to_usernames:dict, usernames_to_connections: dict):
     with conn:
         while True:
             try:
-                incoming_transmission = conn.recv(1024)
+                incoming_transmission = recv_all(conn)
 
                 if incoming_transmission == b'':
                     cleanup(conn,connections_to_usernames,usernames_to_connections)
@@ -30,33 +60,31 @@ def handle_client(conn: socket.socket, connections_to_usernames:dict, usernames_
                 if incoming_packet['type'] == 'login':
                     if incoming_packet['username'] in usernames_to_connections:
                         login_fail = {'type':'login_failed'}
-                        conn.send(json.dumps(login_fail).encode())
+                        send_all(conn,login_fail)
                     else:
                         login_success = {'type':'login_success'}
                         connections_to_usernames[conn] = incoming_packet['username']
                         usernames_to_connections[incoming_packet['username']] = conn
-                        conn.send(json.dumps(login_success).encode())
+                        send_all(conn,login_success)
 
                 elif incoming_packet['type'] == 'userlist_request':
-                    userlist = list(usernames_to_connections.keys())
-                    conn.send(json.dumps(userlist).encode())
+                    userlist = {'type':'userlist', 'users': list(usernames_to_connections.keys())}
+                    send_all(conn,userlist)
 
                 elif incoming_packet['type'] == 'public':
                     outgoing_packet = {'type': 'public', 'sender':connections_to_usernames[conn],'message':incoming_packet['message']}
-                    outgoing_transmission = json.dumps(outgoing_packet).encode()
+                    
                     for connection in connections_to_usernames:
                         if conn != connection:
-                            connection.send(outgoing_transmission)
+                            send_all(connection,outgoing_packet)
 
                 elif incoming_packet['type'] == 'private':
                     if incoming_packet['recipient'] in usernames_to_connections:
                         outgoing_packet = {'type':'private', 'sender':connections_to_usernames[conn], 'message':incoming_packet['message']}
-                        outgoing_transmission = json.dumps(outgoing_packet).encode()
-                        usernames_to_connections[incoming_packet['recipient']].send(outgoing_transmission)
+                        send_all(usernames_to_connections[incoming_packet['recipient']],outgoing_packet)
                     else:
-                        system_message = {'type': 'public', 'sender': 'SYSTEM', 'message': f'{incoming_packet['recipient']} does not exist'}
-                        system_packet = json.dumps(system_message).encode()
-                        conn.send(system_packet)
+                        system_packet = {'type': 'public', 'sender': 'SYSTEM', 'message': f'{incoming_packet['recipient']} does not exist'}
+                        send_all(conn,system_packet)
             except ConnectionResetError:
                 cleanup(conn, connections_to_usernames,usernames_to_connections)
                 break

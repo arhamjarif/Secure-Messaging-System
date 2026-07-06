@@ -18,12 +18,21 @@ def handle_client(conn: socket.socket, connections_to_usernames:dict, usernames_
                     usernames_to_connections[incoming_packet['username']] = conn
                     conn.send(json.dumps(login_success).encode())
 
+            elif incoming_packet['type'] == 'userlist_request':
+                userlist = list(usernames_to_connections.keys())
+                conn.send(json.dumps(userlist).encode())
+
             elif incoming_packet['type'] == 'public':
                 outgoing_packet = {'type': 'public', 'sender':connections_to_usernames[conn],'message':incoming_packet['message']}
                 outgoing_transmission = json.dumps(outgoing_packet).encode()
                 for connection in connections_to_usernames:
                     if conn != connection:
                         connection.send(outgoing_transmission)
+
+            elif incoming_packet['type'] == 'private':
+                outgoing_packet = {'type':'private', 'sender':connections_to_usernames[conn], 'message':incoming_packet['message']}
+                outgoing_transmission = json.dumps(outgoing_packet).encode()
+                usernames_to_connections[incoming_packet['recipient']].send(outgoing_transmission)
 
 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server:
     server.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1)

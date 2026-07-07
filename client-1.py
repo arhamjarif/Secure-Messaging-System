@@ -1,4 +1,4 @@
-import socket, threading,json,base64,os
+import socket, threading,json,base64,os,queue
 from cryptography.hazmat.primitives.asymmetric import rsa, padding
 from cryptography.hazmat.primitives import serialization, hashes
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
@@ -28,7 +28,7 @@ def recv_check(client: socket.socket, private_key:rsa.RSAPrivateKey):
             print(f"[private]{incoming_packet['sender']}: {message}")
 
         else:
-            shared.append(incoming_packet)
+            response_queue.put(incoming_packet)
 
 def recv_exact(conn:socket.socket, required_bytes:int):
     received_bytes = conn.recv(required_bytes)
@@ -77,7 +77,7 @@ with socket.socket(socket.AF_INET,socket.SOCK_STREAM) as client:
         else:
             print('Username taken. Please try again')
     
-    shared = []
+    response_queue = queue.Queue()
     receive_thread = threading.Thread(target=recv_check,args=(client,private_key))
     receive_thread.start()
 
@@ -86,15 +86,7 @@ with socket.socket(socket.AF_INET,socket.SOCK_STREAM) as client:
         if message == '/pm':
             userlist_packet = {'type':'userlist_request'}
             send_all(client,userlist_packet)
-            userlist = None
-            while True:
-                for i in range(0,len(shared)):
-                    if shared[i]['type'] == 'userlist':
-                        userlist = shared[i]
-                        shared.pop(i)
-                        break
-                if userlist != None:
-                    break
+            userlist = response_queue.get()
             print('Available users:')
             index = 1
             for user in userlist['users']:
@@ -104,15 +96,7 @@ with socket.socket(socket.AF_INET,socket.SOCK_STREAM) as client:
 
             public_key_request = {'type':'public_key_request','user':userlist['users'][pm_recipient-1]}
             send_all(client,public_key_request)
-            requested_public_key_dict = None 
-            while True:
-                for i in range(0,len(shared)):
-                    if shared[i]['type'] == 'public_key_response':
-                        requested_public_key_dict = shared[i]
-                        shared.pop(i)
-                        break
-                if requested_public_key_dict != None:
-                    break
+            requested_public_key_dict = response_queue.get() 
             requested_public_key = serialization.load_pem_public_key(requested_public_key_dict['public_key'].encode())
             
 

@@ -1,36 +1,9 @@
 import socket,threading,json
-
+from network import recv_all,send_all
 
 host = "127.0.0.1"
 port = 6000
-def recv_exact(conn:socket.socket, required_bytes:int):
-    received_bytes = conn.recv(required_bytes)
-    if received_bytes == b'':
-        return b''
-    received_bytes_counter = len(received_bytes)
-    while received_bytes_counter != required_bytes:
-        chunk = conn.recv(required_bytes-received_bytes_counter)
-        if chunk == b'':
-            return b''
-        received_bytes += chunk 
-        received_bytes_counter = len(received_bytes)
-    return received_bytes
 
-
-def recv_all(conn:socket.socket):
-    header = recv_exact(conn,4)
-    if header == b'':
-        return header
-    length = int(header.decode())
-    received_bytes = recv_exact(conn,length)
-    return received_bytes
-
-
-
-def send_all(conn:socket.socket,packet:dict):
-    outgoing_transmission = json.dumps(packet).encode()
-    length = str(len(outgoing_transmission)).rjust(4,'0').encode()
-    conn.sendall(length + outgoing_transmission)
 
 
 def cleanup(conn:socket.socket,connections_to_usernames:dict,usernames_to_connections:dict):
@@ -103,6 +76,6 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server:
     
     while True:
         conn, addr = server.accept()
-        print(f'{addr} has successfully connected...\n')
+        print(f'{addr} has successfully connected...')
         worker_thread = threading.Thread(target=handle_client,args=(conn, connections_to_usernames, usernames_to_connections))
         worker_thread.start()

@@ -92,9 +92,17 @@ with socket.socket(socket.AF_INET,socket.SOCK_STREAM) as client:
             for user in userlist['users']:
                 print(f'{index}. {user}')
                 index += 1
-            pm_recipient = int(input('Select user no: '))
-
-            public_key_request = {'type':'public_key_request','user':userlist['users'][pm_recipient-1]}
+            while True:
+                try:
+                    pm_recipient = int(input("Select user no: "))
+                except(ValueError):
+                    print('Please enter a number.')
+                    continue
+                if pm_recipient in range(1,index):
+                    recipient = userlist["users"][pm_recipient - 1]
+                    break
+                print("Please choose one of the listed users.")
+            public_key_request = {'type':'public_key_request','user':recipient}
             send_all(client,public_key_request)
             requested_public_key_dict = response_queue.get() 
             requested_public_key = serialization.load_pem_public_key(requested_public_key_dict['public_key'].encode())
@@ -114,7 +122,7 @@ with socket.socket(socket.AF_INET,socket.SOCK_STREAM) as client:
 
             #nonce encoding
             nonce_b64 = base64.urlsafe_b64encode(nonce).decode()
-            private_packet = {'type':'private', 'recipient':userlist['users'][pm_recipient-1], 'message':encrypted_private_message, 'AES_key':encrypted_aes_key, 'nonce': nonce_b64}
+            private_packet = {'type':'private', 'recipient':recipient, 'message':encrypted_private_message, 'AES_key':encrypted_aes_key, 'nonce': nonce_b64}
             send_all(client,private_packet)
 
         else:

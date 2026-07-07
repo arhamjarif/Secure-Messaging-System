@@ -6,10 +6,11 @@ port = 6000
 
 
 
+
 def cleanup(conn:socket.socket,connections_to_usernames:dict,usernames_to_connections:dict):
     if conn not in connections_to_usernames:
         return
-    username = connections_to_usernames[conn][0]
+    username = connections_to_usernames[conn]['username']
     del usernames_to_connections[username]
     del connections_to_usernames[conn]
     print(f'{username} disconnected')
@@ -28,7 +29,7 @@ def handle_client(conn: socket.socket, connections_to_usernames:dict, usernames_
                     break
 
                 incoming_packet = json.loads(incoming_transmission.decode())
-                
+
                
                 if incoming_packet['type'] == 'login':
                     if incoming_packet['username'] in usernames_to_connections:
@@ -36,20 +37,24 @@ def handle_client(conn: socket.socket, connections_to_usernames:dict, usernames_
                         send_all(conn,login_fail)
                     else:
                         login_success = {'type':'login_success'}
-                        connections_to_usernames[conn] = (incoming_packet['username'], incoming_packet['public_key'])
-                        usernames_to_connections[incoming_packet['username']] = (conn, incoming_packet['public_key'])
+                        connections_to_usernames[conn] = {'username':incoming_packet['username'], 'public_key':incoming_packet['public_key']}
+                        usernames_to_connections[incoming_packet['username']] = {'conn':conn, 'public_key':incoming_packet['public_key']}
                         send_all(conn,login_success)
+                        system_packet = {'type': 'public','sender':'SYSTEM','message': f'{incoming_packet['username']} has connected'}
+                        print(f'Connection username set to: {incoming_packet['username']}\n')
+                        for connection in connections_to_usernames:
+                            send_all(connection,system_packet)
 
                 elif incoming_packet['type'] == 'userlist_request':
                     userlist = {'type':'userlist', 'users': list(usernames_to_connections.keys())}
                     send_all(conn,userlist)
 
                 elif incoming_packet['type'] == 'public_key_request':
-                    requested_public_key = {'type':'public_key_response', 'public_key':usernames_to_connections[incoming_packet['user']][1]}
+                    requested_public_key = {'type':'public_key_response', 'public_key':usernames_to_connections[incoming_packet['user']]['public_key']}
                     send_all(conn, requested_public_key)
 
                 elif incoming_packet['type'] == 'public':
-                    outgoing_packet = {'type': 'public', 'sender':connections_to_usernames[conn][0],'message':incoming_packet['message']}
+                    outgoing_packet = {'type': 'public', 'sender':connections_to_usernames[conn]['username'],'message':incoming_packet['message']}
                     
                     for connection in connections_to_usernames:
                         if conn != connection:
@@ -57,8 +62,8 @@ def handle_client(conn: socket.socket, connections_to_usernames:dict, usernames_
 
                 elif incoming_packet['type'] == 'private':
                     if incoming_packet['recipient'] in usernames_to_connections:
-                        outgoing_packet = {'type':'private', 'sender':connections_to_usernames[conn][0], 'message':incoming_packet['message'], 'AES_key':incoming_packet['AES_key'], 'nonce':incoming_packet['nonce']}
-                        send_all(usernames_to_connections[incoming_packet['recipient']][0],outgoing_packet)
+                        outgoing_packet = {'type':'private', 'sender':connections_to_usernames[conn]['username'], 'message':incoming_packet['message'], 'AES_key':incoming_packet['AES_key'], 'nonce':incoming_packet['nonce']}
+                        send_all(usernames_to_connections[incoming_packet['recipient']]['conn'],outgoing_packet)
                     else:
                         system_packet = {'type': 'public', 'sender': 'SYSTEM', 'message': f'{incoming_packet['recipient']} does not exist'}
                         send_all(conn,system_packet)

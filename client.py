@@ -9,20 +9,25 @@ host = "127.0.0.1"
 port = 6000
 def recv_check(client: socket.socket, private_key:rsa.RSAPrivateKey):
     while True:
-        incoming_transmission = recv_all(client)
-        if incoming_transmission == b'':
-            print('Server disconnected')
+        try:
+            incoming_transmission = recv_all(client)
+            if incoming_transmission == b'':
+                print('Server disconnected')
+                break
+
+            incoming_packet = json.loads(incoming_transmission.decode())
+            
+            if incoming_packet['type'] == 'public':
+                print(f"{incoming_packet['sender']}: {incoming_packet['message']}")
+
+            elif incoming_packet['type'] == 'private':
+                message = decrypt_private_message(incoming_packet['nonce'],incoming_packet['AES_key'],incoming_packet['message'],private_key)
+                print(f"[private]{incoming_packet['sender']}: {message}")
+
+            else:
+                response_queue.put(incoming_packet)
+        except OSError:
             break
-        incoming_packet = json.loads(incoming_transmission.decode())
-        if incoming_packet['type'] == 'public':
-            print(f"{incoming_packet['sender']}: {incoming_packet['message']}")
-
-        elif incoming_packet['type'] == 'private':
-            message = decrypt_private_message(incoming_packet['nonce'],incoming_packet['AES_key'],incoming_packet['message'],private_key)
-            print(f"[private]{incoming_packet['sender']}: {message}")
-
-        else:
-            response_queue.put(incoming_packet)
 
 with socket.socket(socket.AF_INET,socket.SOCK_STREAM) as client:
     client.connect((host,port))
@@ -33,8 +38,11 @@ with socket.socket(socket.AF_INET,socket.SOCK_STREAM) as client:
     while True:
         username = input('Enter username: ')
         login_packet = {'type':'login','username':username, 'public_key': serialized_public_key}
+        
         send_all(client,login_packet)
-        login_validation = json.loads(recv_all(client).decode())
+            
+        login_validation = json.loads(recv_all(client).decode())            
+            
         if login_validation['type'] == 'login_success':
             break
         else:
@@ -45,7 +53,7 @@ with socket.socket(socket.AF_INET,socket.SOCK_STREAM) as client:
     receive_thread.start()
 
     while True:
-        message = input("Enter Message (if you wish to send a private message, Enter '/pm'):\n")
+        message = input("Enter Message (for available commands, Enter '/h'):\n")
         if message == '/pm':
             userlist_packet = {'type':'userlist_request'}
             send_all(client,userlist_packet)
@@ -74,6 +82,14 @@ with socket.socket(socket.AF_INET,socket.SOCK_STREAM) as client:
             encrypted_private_message,encrypted_aes_key,nonce_b64 = encrypt_private_message(private_message,requested_public_key)
             private_packet = {'type':'private', 'recipient':recipient, 'message':encrypted_private_message, 'AES_key':encrypted_aes_key, 'nonce': nonce_b64}
             send_all(client,private_packet)
+        elif message == '/h':
+            print('Private Message = /pm\nQuit program = /q')
+        elif message == '/q':
+            client.shutdown(socket.SHUT_RDWR)
+            client.close()
+            receive_thread.join()
+            print('Goodbye!')
+            break
 
         else:
             public_packet = {'type':'public','message':message}

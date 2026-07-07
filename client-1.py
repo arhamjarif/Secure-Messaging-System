@@ -1,7 +1,7 @@
-import socket, threading,json,base64
+import socket, threading,json,base64,os
 from cryptography.hazmat.primitives.asymmetric import rsa, padding
 from cryptography.hazmat.primitives import serialization, hashes
-
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 
 
@@ -18,8 +18,13 @@ def recv_check(client: socket.socket, private_key:rsa.RSAPrivateKey):
             print(f"{incoming_packet['sender']}: {incoming_packet['message']}")
 
         elif incoming_packet['type'] == 'private':
+            nonce = base64.urlsafe_b64decode(incoming_packet['nonce'].encode())
+            encrypted_aes_key = base64.urlsafe_b64decode(incoming_packet['AES_key'].encode())
+            aes_key = private_key.decrypt(encrypted_aes_key, padding.OAEP(mgf=padding.MGF1(algorithm=hashes.SHA256()),algorithm=hashes.SHA256(),label=None))
+
             encrypted_private_message_bytes = base64.urlsafe_b64decode(incoming_packet['message'].encode())
-            message = private_key.decrypt(encrypted_private_message_bytes, padding.OAEP(mgf=padding.MGF1(algorithm=hashes.SHA256()),algorithm=hashes.SHA256(),label=None)).decode()
+            aes = AESGCM(aes_key)
+            message = aes.decrypt(nonce,encrypted_private_message_bytes,None).decode()
             print(f"[private]{incoming_packet['sender']}: {message}")
 
         else:
@@ -112,10 +117,20 @@ with socket.socket(socket.AF_INET,socket.SOCK_STREAM) as client:
             
 
             private_message = input('Enter Message:\n').encode()
-
-            encrypted_private_message_bytes = requested_public_key.encrypt(private_message,padding.OAEP(mgf=padding.MGF1(algorithm=hashes.SHA256()), algorithm=hashes.SHA256(),label=None))
+            aes_key = AESGCM.generate_key(bit_length=256)
+            aes = AESGCM(aes_key)
+            nonce = os.urandom(12)
+            #message encryption
+            encrypted_private_message_bytes = aes.encrypt(nonce,private_message,None)
             encrypted_private_message = base64.urlsafe_b64encode(encrypted_private_message_bytes).decode()
-            private_packet = {'type':'private', 'recipient':userlist['users'][pm_recipient-1], 'message':encrypted_private_message}
+
+            #AES key encryption
+            encrypted_aes_key_bytes = requested_public_key.encrypt(aes_key,padding.OAEP(mgf=padding.MGF1(algorithm=hashes.SHA256()), algorithm=hashes.SHA256(),label=None))
+            encrypted_aes_key = base64.urlsafe_b64encode(encrypted_aes_key_bytes).decode()
+
+            #nonce encoding
+            nonce_b64 = base64.urlsafe_b64encode(nonce).decode()
+            private_packet = {'type':'private', 'recipient':userlist['users'][pm_recipient-1], 'message':encrypted_private_message, 'AES_key':encrypted_aes_key, 'nonce': nonce_b64}
             send_all(client,private_packet)
 
         else:

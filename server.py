@@ -84,7 +84,7 @@ def handle_client(conn: socket.socket, connections_to_usernames:dict, usernames_
 
                 elif incoming_packet['type'] == 'private':
                     if incoming_packet['recipient'] in usernames_to_connections:
-                        outgoing_packet = {'type':'private', 'sender':connections_to_usernames[conn][0], 'message':incoming_packet['message']}
+                        outgoing_packet = {'type':'private', 'sender':connections_to_usernames[conn][0], 'message':incoming_packet['message'], 'AES_key':incoming_packet['AES_key'], 'nonce':incoming_packet['nonce']}
                         send_all(usernames_to_connections[incoming_packet['recipient']][0],outgoing_packet)
                     else:
                         system_packet = {'type': 'public', 'sender': 'SYSTEM', 'message': f'{incoming_packet['recipient']} does not exist'}
